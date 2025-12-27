@@ -1,5 +1,17 @@
 import random
-from panda3d.core import NodePath, CardMaker, Vec3, Vec4
+from enum import Enum, auto
+from panda3d.core import NodePath, Vec4, PerlinNoise2
+from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter
+from panda3d.core import Geom, GeomTriangles, GeomNode
+
+class TileType(Enum):
+    OCEAN = auto()
+    FRESH_WATER = auto()
+    ARID = auto()
+    GRASSLAND = auto()
+    FOREST = auto()
+    TUNDRA = auto()
+    ROCKY = auto()
 
 class Tile:
     def __init__(self, x, y, elevation, moisture):
@@ -8,19 +20,33 @@ class Tile:
         self.elevation = elevation
         self.moisture = moisture
         self.resource = None
-        self.has_water = False
         self.settlement = None
+        self.type = self._determine_type()
         
-        # Determine if it has fresh water
-        if self.elevation < 0.4 and self.moisture > 0.6:
-            self.has_water = True
-            self.resource = "Fresh Water"
+    def _determine_type(self):
+        if self.elevation < 0.3:
+            return TileType.OCEAN
+        if self.elevation > 0.85:
+            return TileType.ROCKY
+            
+        if self.elevation > 0.7 and self.moisture < 0.3:
+            return TileType.TUNDRA
+            
+        if self.moisture < 0.25:
+            return TileType.ARID
+        if self.moisture < 0.55:
+            return TileType.GRASSLAND
+        return TileType.FOREST
+
+    @property
+    def has_water(self):
+        return self.type in [TileType.OCEAN, TileType.FRESH_WATER]
 
 class Settlement:
     def __init__(self, name, tile):
         self.name = name
         self.tile = tile
-        self.size = 1 # Population/Size level
+        self.size = 1 # Population
         self.tile.settlement = self
         self.visual_node = None
 
@@ -37,58 +63,114 @@ class MapManager:
         self.settlements = []
         
     def generate_map(self):
-        raw_data = {}
+        seed = random.randint(0, 10000)
+        elev_noise = PerlinNoise2(8, 8, 256, seed)
+        moist_noise = PerlinNoise2(8, 8, 256, seed + 1)
+        
         for x in range(self.size):
             for y in range(self.size):
-                elev = random.random()
-                moist = random.random()
-                raw_data[(x, y)] = [elev, moist]
+                e = (elev_noise.noise(x * 0.15, y * 0.15) * 0.8 + 
+                     elev_noise.noise(x * 0.4, y * 0.4) * 0.2)
+                e = (e + 1) / 2.0
+                e = (e - 0.1) / 0.8
+                e = max(0, min(1, e))
+                
+                m = (moist_noise.noise(x * 0.2, y * 0.2) + 1) / 2.0
+                m = (m - 0.1) / 0.8
+                m = max(0, min(1, m))
+                
+                self.tiles[(x, y)] = Tile(x, y, e, m)
+
+        self.generate_rivers()
+            
+    def generate_rivers(self):
+        sources = [t for t in self.tiles.values() if t.elevation > 0.8 and t.type == TileType.ROCKY]
+        num_rivers = random.randint(int(self.size/10), int(self.size/5))
         
-        # Smoothing pass
-        for _ in range(3):
-            new_data = {}
-            for x in range(self.size):
-                for y in range(self.size):
-                    e_sum, m_sum, count = 0, 0, 0
-                    for dx in [-1, 0, 1]:
-                        for dy in [-1, 0, 1]:
-                            nx, ny = x + dx, y + dy
-                            if (nx, ny) in raw_data:
-                                e, m = raw_data[(nx, ny)]
-                                e_sum += e
-                                m_sum += m
-                                count += 1
-                    new_data[(x, y)] = [e_sum / count, m_sum / count]
-            raw_data = new_data
+        if not sources:
+            return
+
+        for _ in range(min(num_rivers, len(sources))):
+            current = random.choice(sources)
+            sources.remove(current)
             
-        for (x, y), (e, m) in raw_data.items():
-            self.tiles[(x, y)] = Tile(x, y, e, m)
+            path = []
+            visited = set()
             
+            while current and current.type != TileType.OCEAN:
+                path.append(current)
+                visited.add((current.x, current.y))
+                
+                neighbors = []
+                for dx in [-1, 0, 1]:
+                    for dy in [-1, 0, 1]:
+                        if dx == 0 and dy == 0: continue
+                        nx, ny = current.x + dx, current.y + dy
+                        neighbor = self.tiles.get((nx, ny))
+                        if neighbor and (nx, ny) not in visited:
+                            neighbors.append(neighbor)
+                
+                if not neighbors:
+                    break
+                    
+                neighbors.sort(key=lambda t: t.elevation)
+                next_tile = neighbors[0]
+                
+                if next_tile.elevation >= current.elevation:
+                    if random.random() > 0.2:
+                        break
+                
+                current = next_tile
+                
+            for tile in path:
+                if tile.type != TileType.OCEAN:
+                    tile.type = TileType.FRESH_WATER
+
     def render_map(self, parent, loader):
         self.root.reparentTo(parent)
-        cm = CardMaker("tile")
-        cm.setFrame(0, 1, 0, 1)
         
+        type_colors = {
+            TileType.OCEAN: Vec4(0.1, 0.3, 0.6, 1),
+            TileType.FRESH_WATER: Vec4(0.3, 0.6, 0.9, 1),
+            TileType.ARID: Vec4(0.8, 0.7, 0.4, 1),
+            TileType.GRASSLAND: Vec4(0.4, 0.7, 0.3, 1),
+            TileType.FOREST: Vec4(0.1, 0.4, 0.1, 1),
+            TileType.TUNDRA: Vec4(0.7, 0.7, 0.8, 1),
+            TileType.ROCKY: Vec4(0.5, 0.5, 0.5, 1),
+        }
+        
+        format = GeomVertexFormat.getV3c4()
+        vdata = GeomVertexData('map_data', format, Geom.UHStatic)
+        
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        color = GeomVertexWriter(vdata, 'color')
+        
+        prim = GeomTriangles(Geom.UHStatic)
+        
+        v_idx = 0
         for (x, y), tile in self.tiles.items():
-            tile_node = self.root.attachNewNode(cm.generate())
-            tile_node.setHpr(0, -90, 0)
-            tile_node.setPos(x, y, 0)
+            c = type_colors.get(tile.type, Vec4(1, 1, 1, 1))
             
-            if tile.has_water:
-                color = Vec4(0.2, 0.5, 0.9, 1)
-            elif tile.elevation < 0.3:
-                color = Vec4(0.3, 0.7, 0.3, 1)
-            elif tile.elevation < 0.6:
-                color = Vec4(0.4, 0.8, 0.4, 1)
-            elif tile.elevation < 0.8:
-                color = Vec4(0.6, 0.6, 0.5, 1)
-            else:
-                color = Vec4(0.9, 0.9, 0.9, 1)
+            vertex.addData3(x, y, 0)
+            vertex.addData3(x + 1, y, 0)
+            vertex.addData3(x + 1, y + 1, 0)
+            vertex.addData3(x, y + 1, 0)
+            
+            for _ in range(4):
+                color.addData4(c)
                 
-            tile_node.setColor(color)
+            prim.addVertices(v_idx, v_idx + 1, v_idx + 2)
+            prim.addVertices(v_idx, v_idx + 2, v_idx + 3)
+            v_idx += 4
+            
+        geom = Geom(vdata)
+        geom.addPrimitive(prim)
+        
+        node = GeomNode('map_geom')
+        node.addGeom(geom)
+        self.root.attachNewNode(node)
 
     def update_visuals(self, loader):
-        # Render settlements
         for s in self.settlements:
             if not s.visual_node:
                 s.visual_node = loader.loadModel("models/box")
@@ -110,7 +192,6 @@ class TurnManager:
         
     def simulate_growth(self):
         for s in self.map_manager.settlements:
-            # Grow if near water
             near_water = False
             for dx in [-1, 0, 1]:
                 for dy in [-1, 0, 1]:
@@ -124,12 +205,10 @@ class TurnManager:
                 print(f"Settlement at {s.tile.x}, {s.tile.y} grew to size {s.size}")
 
     def spawn_new_settlements(self):
-        # Chance to spawn a new settlement near water if not already occupied
         if random.random() < 0.2:
             potential_tiles = []
             for (x, y), tile in self.map_manager.tiles.items():
                 if not tile.settlement and not tile.has_water:
-                    # Check for nearby water
                     has_nearby_water = False
                     for dx in [-1, 0, 1]:
                         for dy in [-1, 0, 1]:

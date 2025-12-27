@@ -1,5 +1,5 @@
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import WindowProperties, Vec3
+from panda3d.core import WindowProperties
 from direct.task import Task
 from game_world import MapManager, TurnManager
 
@@ -14,7 +14,7 @@ class Game(ShowBase):
         self.disableMouse()
         
         # World setup
-        self.map_mgr = MapManager(size=40)
+        self.map_mgr = MapManager(size=300)
         self.map_mgr.generate_map()
         self.map_mgr.render_map(self.render, self.loader)
         
@@ -24,10 +24,10 @@ class Game(ShowBase):
         self.camera.setPos(20, 20, 40)
         self.camera.setHpr(0, -90, 0) # Look straight down
         
-        # Camera movement variables
+        # Camera movement
         self.zoom_level = 40
         self.min_zoom = 5
-        self.max_zoom = 100
+        self.max_zoom = 1000
         self.move_speed = 30
         
         # Keyboard state
@@ -44,7 +44,7 @@ class Game(ShowBase):
         # Turn control
         self.accept("space", self.next_turn)
         
-        # Zoom controls
+        # Zoom
         self.accept("wheel_up", self.adjust_zoom, [-3.0])
         self.accept("wheel_down", self.adjust_zoom, [3.0])
         
