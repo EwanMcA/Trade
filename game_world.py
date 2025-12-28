@@ -14,27 +14,29 @@ class TileType(Enum):
     ROCKY = auto()
 
 class Tile:
-    def __init__(self, x, y, elevation, moisture):
+    def __init__(self, x, y, elevation, moisture, thresholds):
         self.x = x
         self.y = y
         self.elevation = elevation
         self.moisture = moisture
         self.resource = None
         self.settlement = None
+        self.thresholds = thresholds
         self.type = self._determine_type()
         
     def _determine_type(self):
-        if self.elevation < 0.3:
+        t = self.thresholds
+        if self.elevation < t["ocean"]:
             return TileType.OCEAN
-        if self.elevation > 0.85:
+        if self.elevation > t["rocky"]:
             return TileType.ROCKY
             
-        if self.elevation > 0.7 and self.moisture < 0.3:
+        if self.elevation > t["tundra_elevation"] and self.moisture < t["tundra_moisture"]:
             return TileType.TUNDRA
             
-        if self.moisture < 0.25:
+        if self.moisture < t["arid_moisture"]:
             return TileType.ARID
-        if self.moisture < 0.55:
+        if self.moisture < t["grassland_moisture"]:
             return TileType.GRASSLAND
         return TileType.FOREST
 
@@ -48,43 +50,56 @@ class Settlement:
         self.tile = tile
         self.size = 1 # Population
         self.tile.settlement = self
-        self.visual_node = None
 
-    def grow(self):
-        self.size += 1
-        if self.visual_node:
-            self.visual_node.setScale(1, 1, self.size * 0.5)
-
-class MapManager:
+class WorldMap:
     def __init__(self, size=40):
         self.size = size
         self.tiles = {}
-        self.root = NodePath("MapRoot")
         self.settlements = []
-        
-    def generate_map(self):
-        seed = random.randint(0, 10000)
+
+    def get_tile(self, x, y):
+        return self.tiles.get((x, y))
+
+class WorldGenerator:
+    def __init__(self, size, config):
+        self.size = size
+        self.config = config
+
+    def generate(self):
+        world_map = WorldMap(self.size)
+        gen_cfg = self.config["generation"]
+        seed = gen_cfg["seed"]
+        if seed == -1:
+            seed = random.randint(0, 10000)
+            
         elev_noise = PerlinNoise2(8, 8, 256, seed)
         moist_noise = PerlinNoise2(8, 8, 256, seed + 1)
         
+        thresholds = self.config["thresholds"]
+        
         for x in range(self.size):
             for y in range(self.size):
-                e = (elev_noise.noise(x * 0.15, y * 0.15) * 0.8 + 
-                     elev_noise.noise(x * 0.4, y * 0.4) * 0.2)
-                e = (e + 1) / 2.0
-                e = (e - 0.1) / 0.8
+                # Elevation generation
+                blend = gen_cfg["elevation_blend"]
+                e = (elev_noise.noise(x * gen_cfg["elevation_scale_1"], y * gen_cfg["elevation_scale_1"]) * blend + 
+                     elev_noise.noise(x * gen_cfg["elevation_scale_2"], y * gen_cfg["elevation_scale_2"]) * (1.0 - blend))
+                e = (e + 1.0) / 2.0
+                e = (e - gen_cfg["norm_offset"]) / gen_cfg["norm_range"]
                 e = max(0, min(1, e))
                 
-                m = (moist_noise.noise(x * 0.2, y * 0.2) + 1) / 2.0
-                m = (m - 0.1) / 0.8
+                # Moisture generation
+                m = (moist_noise.noise(x * gen_cfg["moisture_scale"], y * gen_cfg["moisture_scale"]) + 1.0) / 2.0
+                m = (m - gen_cfg["norm_offset"]) / gen_cfg["norm_range"]
                 m = max(0, min(1, m))
                 
-                self.tiles[(x, y)] = Tile(x, y, e, m)
+                world_map.tiles[(x, y)] = Tile(x, y, e, m, thresholds)
 
-        self.generate_rivers()
+        self._generate_rivers(world_map)
+        return world_map
             
-    def generate_rivers(self):
-        sources = [t for t in self.tiles.values() if t.elevation > 0.8 and t.type == TileType.ROCKY]
+    def _generate_rivers(self, world_map):
+        sim_cfg = self.config["simulation"]
+        sources = [t for t in world_map.tiles.values() if t.elevation > sim_cfg["river_source_min_elevation"] and t.type == TileType.ROCKY]
         num_rivers = random.randint(int(self.size/10), int(self.size/5))
         
         if not sources:
@@ -106,7 +121,7 @@ class MapManager:
                     for dy in [-1, 0, 1]:
                         if dx == 0 and dy == 0: continue
                         nx, ny = current.x + dx, current.y + dy
-                        neighbor = self.tiles.get((nx, ny))
+                        neighbor = world_map.tiles.get((nx, ny))
                         if neighbor and (nx, ny) not in visited:
                             neighbors.append(neighbor)
                 
@@ -117,7 +132,7 @@ class MapManager:
                 next_tile = neighbors[0]
                 
                 if next_tile.elevation >= current.elevation:
-                    if random.random() > 0.2:
+                    if random.random() > sim_cfg["river_stop_chance"]:
                         break
                 
                 current = next_tile
@@ -126,17 +141,25 @@ class MapManager:
                 if tile.type != TileType.OCEAN:
                     tile.type = TileType.FRESH_WATER
 
-    def render_map(self, parent, loader):
+class MapRenderer:
+    def __init__(self, world_map, config):
+        self.world_map = world_map
+        self.config = config
+        self.root = NodePath("MapRoot")
+        self.settlement_nodes = {} # Settlement -> NodePath
+
+    def render(self, parent, loader):
         self.root.reparentTo(parent)
         
+        color_cfg = self.config["colors"]
         type_colors = {
-            TileType.OCEAN: Vec4(0.1, 0.3, 0.6, 1),
-            TileType.FRESH_WATER: Vec4(0.3, 0.6, 0.9, 1),
-            TileType.ARID: Vec4(0.8, 0.7, 0.4, 1),
-            TileType.GRASSLAND: Vec4(0.4, 0.7, 0.3, 1),
-            TileType.FOREST: Vec4(0.1, 0.4, 0.1, 1),
-            TileType.TUNDRA: Vec4(0.7, 0.7, 0.8, 1),
-            TileType.ROCKY: Vec4(0.5, 0.5, 0.5, 1),
+            TileType.OCEAN: Vec4(*color_cfg["OCEAN"]),
+            TileType.FRESH_WATER: Vec4(*color_cfg["FRESH_WATER"]),
+            TileType.ARID: Vec4(*color_cfg["ARID"]),
+            TileType.GRASSLAND: Vec4(*color_cfg["GRASSLAND"]),
+            TileType.FOREST: Vec4(*color_cfg["FOREST"]),
+            TileType.TUNDRA: Vec4(*color_cfg["TUNDRA"]),
+            TileType.ROCKY: Vec4(*color_cfg["ROCKY"]),
         }
         
         format = GeomVertexFormat.getV3c4()
@@ -148,7 +171,7 @@ class MapManager:
         prim = GeomTriangles(Geom.UHStatic)
         
         v_idx = 0
-        for (x, y), tile in self.tiles.items():
+        for (x, y), tile in self.world_map.tiles.items():
             c = type_colors.get(tile.type, Vec4(1, 1, 1, 1))
             
             vertex.addData3(x, y, 0)
@@ -169,50 +192,57 @@ class MapManager:
         node = GeomNode('map_geom')
         node.addGeom(geom)
         self.root.attachNewNode(node)
-
-    def update_visuals(self, loader):
-        for s in self.settlements:
-            if not s.visual_node:
-                s.visual_node = loader.loadModel("models/box")
-                s.visual_node.reparentTo(self.root)
-                s.visual_node.setPos(s.tile.x + 0.5, s.tile.y + 0.5, 0)
-                s.visual_node.setScale(0.4, 0.4, 0.5)
-                s.visual_node.setColor(0.8, 0.2, 0.2, 1)
-
-class TurnManager:
-    def __init__(self, map_manager):
-        self.map_manager = map_manager
-        self.turn_count = 0
         
-    def next_turn(self):
-        self.turn_count += 1
-        print(f"--- Turn {self.turn_count} ---")
-        self.simulate_growth()
-        self.spawn_new_settlements()
-        
-    def simulate_growth(self):
-        for s in self.map_manager.settlements:
+        self.update_settlements(loader)
+
+    def update_settlements(self, loader):
+        vis_cfg = self.config["visuals"]
+        for s in self.world_map.settlements:
+            if s not in self.settlement_nodes:
+                node = loader.loadModel("models/box")
+                node.reparentTo(self.root)
+                node.setPos(s.tile.x + 0.5, s.tile.y + 0.5, 0)
+                node.setColor(*vis_cfg["settlement_color"])
+                self.settlement_nodes[s] = node
+            
+            # Update scale based on size
+            base_scale = vis_cfg["settlement_scale"]
+            self.settlement_nodes[s].setScale(base_scale[0], base_scale[1], s.size * base_scale[2])
+
+class WorldSimulation:
+    def __init__(self, world_map, config):
+        self.world_map = world_map
+        self.config = config
+
+    def simulate_turn(self):
+        self._simulate_growth()
+        self._spawn_new_settlements()
+
+    def _simulate_growth(self):
+        sim_cfg = self.config["simulation"]
+        for s in self.world_map.settlements:
             near_water = False
             for dx in [-1, 0, 1]:
                 for dy in [-1, 0, 1]:
-                    neighbor = self.map_manager.tiles.get((s.tile.x + dx, s.tile.y + dy))
+                    neighbor = self.world_map.get_tile(s.tile.x + dx, s.tile.y + dy)
                     if neighbor and neighbor.has_water:
                         near_water = True
                         break
             
-            if near_water and random.random() < 0.3:
-                s.grow()
+            if near_water and random.random() < sim_cfg["growth_chance"]:
+                s.size += 1
                 print(f"Settlement at {s.tile.x}, {s.tile.y} grew to size {s.size}")
 
-    def spawn_new_settlements(self):
-        if random.random() < 0.2:
+    def _spawn_new_settlements(self):
+        sim_cfg = self.config["simulation"]
+        if random.random() < sim_cfg["spawn_chance"]:
             potential_tiles = []
-            for (x, y), tile in self.map_manager.tiles.items():
+            for (x, y), tile in self.world_map.tiles.items():
                 if not tile.settlement and not tile.has_water:
                     has_nearby_water = False
                     for dx in [-1, 0, 1]:
                         for dy in [-1, 0, 1]:
-                            neighbor = self.map_manager.tiles.get((x + dx, y + dy))
+                            neighbor = self.world_map.get_tile(x + dx, y + dy)
                             if neighbor and neighbor.has_water:
                                 has_nearby_water = True
                                 break
@@ -221,6 +251,16 @@ class TurnManager:
             
             if potential_tiles:
                 target = random.choice(potential_tiles)
-                new_s = Settlement(f"City {len(self.map_manager.settlements)}", target)
-                self.map_manager.settlements.append(new_s)
+                new_s = Settlement(f"City {len(self.world_map.settlements)}", target)
+                self.world_map.settlements.append(new_s)
                 print(f"New settlement founded at {target.x}, {target.y}")
+
+class TurnManager:
+    def __init__(self, simulation):
+        self.simulation = simulation
+        self.turn_count = 0
+        
+    def next_turn(self):
+        self.turn_count += 1
+        print(f"--- Turn {self.turn_count} ---")
+        self.simulation.simulate_turn()
