@@ -1,8 +1,9 @@
 import random
 from enum import Enum, auto
-from panda3d.core import NodePath, Vec4, PerlinNoise2
+from panda3d.core import NodePath, Vec4, Vec3, PerlinNoise2
 from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter
 from panda3d.core import Geom, GeomTriangles, GeomNode
+from panda3d.core import DirectionalLight, AmbientLight
 
 class TileType(Enum):
     OCEAN = auto()
@@ -148,10 +149,20 @@ class MapRenderer:
         self.root = NodePath("MapRoot")
         self.settlement_nodes = {} # Settlement -> NodePath
 
+    def _get_elev(self, x, y):
+        size = self.world_map.size
+        # Map corners to tile elevations
+        tx = max(0, min(size - 1, x))
+        ty = max(0, min(size - 1, y))
+        return self.world_map.get_tile(tx, ty).elevation
+
     def render(self, parent, loader):
         self.root.reparentTo(parent)
         
         color_cfg = self.config["colors"]
+        vis_cfg = self.config["visuals"]
+        height_scale = vis_cfg["height_scale"]
+        
         type_colors = {
             TileType.OCEAN: Vec4(*color_cfg["OCEAN"]),
             TileType.FRESH_WATER: Vec4(*color_cfg["FRESH_WATER"]),
@@ -162,10 +173,12 @@ class MapRenderer:
             TileType.ROCKY: Vec4(*color_cfg["ROCKY"]),
         }
         
-        format = GeomVertexFormat.getV3c4()
+        # Use V3n3c4 format for vertex, normal, and color
+        format = GeomVertexFormat.getV3n3c4()
         vdata = GeomVertexData('map_data', format, Geom.UHStatic)
         
         vertex = GeomVertexWriter(vdata, 'vertex')
+        normal = GeomVertexWriter(vdata, 'normal')
         color = GeomVertexWriter(vdata, 'color')
         
         prim = GeomTriangles(Geom.UHStatic)
@@ -174,12 +187,31 @@ class MapRenderer:
         for (x, y), tile in self.world_map.tiles.items():
             c = type_colors.get(tile.type, Vec4(1, 1, 1, 1))
             
-            vertex.addData3(x, y, 0)
-            vertex.addData3(x + 1, y, 0)
-            vertex.addData3(x + 1, y + 1, 0)
-            vertex.addData3(x, y + 1, 0)
+            # Corner heights
+            h00 = self._get_elev(x, y) * height_scale
+            h10 = self._get_elev(x + 1, y) * height_scale
+            h11 = self._get_elev(x + 1, y + 1) * height_scale
+            h01 = self._get_elev(x, y + 1) * height_scale
+            
+            # Vertices
+            v0 = Vec3(x, y, h00)
+            v1 = Vec3(x + 1, y, h10)
+            v2 = Vec3(x + 1, y + 1, h11)
+            v3 = Vec3(x, y + 1, h01)
+            
+            vertex.addData3(v0)
+            vertex.addData3(v1)
+            vertex.addData3(v2)
+            vertex.addData3(v3)
+            
+            # Calculate normal for the quad (simplified as average of two triangles)
+            side1 = v1 - v0
+            side2 = v3 - v0
+            n = side1.cross(side2)
+            n.normalize()
             
             for _ in range(4):
+                normal.addData3(n)
                 color.addData4(c)
                 
             prim.addVertices(v_idx, v_idx + 1, v_idx + 2)
@@ -193,15 +225,41 @@ class MapRenderer:
         node.addGeom(geom)
         self.root.attachNewNode(node)
         
+        # Enable lighting and set a basic material
+        self._setup_lighting(parent)
+        
         self.update_settlements(loader)
+
+    def _setup_lighting(self, parent):
+        light_cfg = self.config["lighting"]
+        
+        # Directional light (Sun)
+        dlight = DirectionalLight('sun')
+        dlight.setColor(Vec4(*light_cfg["sun_color"]))
+        dlnp = parent.attachNewNode(dlight)
+        dlnp.setHpr(0, -60, 0) # Tilt it down
+        # We can also use sun_direction from config
+        dir = Vec3(*light_cfg["sun_direction"])
+        dlnp.lookAt(dir)
+        parent.setLight(dlnp)
+        
+        # Ambient light
+        alight = AmbientLight('ambient')
+        alight.setColor(Vec4(*light_cfg["ambient_color"]))
+        alnp = parent.attachNewNode(alight)
+        parent.setLight(alnp)
 
     def update_settlements(self, loader):
         vis_cfg = self.config["visuals"]
+        height_scale = vis_cfg["height_scale"]
+        
         for s in self.world_map.settlements:
             if s not in self.settlement_nodes:
                 node = loader.loadModel("models/box")
                 node.reparentTo(self.root)
-                node.setPos(s.tile.x + 0.5, s.tile.y + 0.5, 0)
+                # Position on top of the tile
+                h = s.tile.elevation * height_scale
+                node.setPos(s.tile.x + 0.5, s.tile.y + 0.5, h)
                 node.setColor(*vis_cfg["settlement_color"])
                 self.settlement_nodes[s] = node
             

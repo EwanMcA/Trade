@@ -83,6 +83,7 @@ class Game(ShowBase):
         
         self._setup_window()
         self.disableMouse()
+        self.render.setShaderAuto()
         
         # Input and Camera
         self.input_handler = InputHandler(self)
