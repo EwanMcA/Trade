@@ -1,0 +1,69 @@
+[window]
+title = "Trade Simulation"
+width = 1600
+height = 900
+
+[camera]
+start_pos = [150, 0, 100]
+start_hpr = [0, -45, 0]
+fov = 90
+move_speed = 30.0
+zoom_speed = 3.0
+min_zoom = 5.0
+max_zoom = 1000.0
+pan_speed = 50.0
+rotate_speed = 100.0
+zoom_ref = 40.0
+pitch_limit_min = -90.0
+pitch_limit_max = 0.0
+
+[map]
+size = 300
+
+[generation]
+seed = -1 # -1 for random
+elevation_scale_1 = 0.15
+elevation_scale_2 = 0.4
+moisture_scale = 0.2
+elevation_blend = 0.8 # Contribution of scale 1
+norm_offset = 0.1
+norm_range = 0.8
+noise_octaves = 8
+noise_frequency = 8
+noise_table_size = 256
+river_count_min_ratio = 0.1
+river_count_max_ratio = 0.2
+
+[thresholds]
+ocean = 0.3
+rocky = 0.85
+tundra_elevation = 0.7
+tundra_moisture = 0.3
+arid_moisture = 0.25
+grassland_moisture = 0.55
+
+[simulation]
+growth_chance = 0.3
+spawn_chance = 0.2
+river_source_min_elevation = 0.8
+river_stop_chance = 0.2
+
+[visuals]
+settlement_scale = [0.4, 0.4, 0.5]
+settlement_color = [0.4, 0.4, 0.4, 1.0]
+height_scale = 20.0
+
+[lighting]
+sun_direction = [1, -1, -1]
+sun_color = [1.0, 1.0, 0.9, 1.0]
+ambient_color = [0.3, 0.3, 0.3, 1.0]
+sun_tilt = -60.0
+
+[colors]
+OCEAN = [0.1, 0.3, 0.6, 1.0]
+FRESH_WATER = [0.3, 0.6, 0.9, 1.0]
+ARID = [0.8, 0.7, 0.4, 1.0]
+GRASSLAND = [0.4, 0.7, 0.3, 1.0]
+FOREST = [0.1, 0.4, 0.1, 1.0]
+TUNDRA = [0.7, 0.7, 0.8, 1.0]
+ROCKY = [0.5, 0.5, 0.5, 1.0]
