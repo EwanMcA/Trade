@@ -73,8 +73,12 @@ class WorldGenerator:
         if seed == -1:
             seed = random.randint(0, 10000)
             
-        elev_noise = PerlinNoise2(8, 8, 256, seed)
-        moist_noise = PerlinNoise2(8, 8, 256, seed + 1)
+        octaves = gen_cfg.get("noise_octaves", 8)
+        freq = gen_cfg.get("noise_frequency", 8)
+        table_size = gen_cfg.get("noise_table_size", 256)
+            
+        elev_noise = PerlinNoise2(octaves, freq, table_size, seed)
+        moist_noise = PerlinNoise2(octaves, freq, table_size, seed + 1)
         
         thresholds = self.config["thresholds"]
         
@@ -100,8 +104,12 @@ class WorldGenerator:
             
     def _generate_rivers(self, world_map):
         sim_cfg = self.config["simulation"]
+        gen_cfg = self.config["generation"]
         sources = [t for t in world_map.tiles.values() if t.elevation > sim_cfg["river_source_min_elevation"] and t.type == TileType.ROCKY]
-        num_rivers = random.randint(int(self.size/10), int(self.size/5))
+        
+        min_ratio = gen_cfg.get("river_count_min_ratio", 0.1)
+        max_ratio = gen_cfg.get("river_count_max_ratio", 0.2)
+        num_rivers = random.randint(int(self.size * min_ratio), int(self.size * max_ratio))
         
         if not sources:
             return
@@ -225,7 +233,6 @@ class MapRenderer:
         node.addGeom(geom)
         self.root.attachNewNode(node)
         
-        # Enable lighting and set a basic material
         self._setup_lighting(parent)
         
         self.update_settlements(loader)
@@ -233,17 +240,15 @@ class MapRenderer:
     def _setup_lighting(self, parent):
         light_cfg = self.config["lighting"]
         
-        # Directional light (Sun)
         dlight = DirectionalLight('sun')
         dlight.setColor(Vec4(*light_cfg["sun_color"]))
         dlnp = parent.attachNewNode(dlight)
-        dlnp.setHpr(0, -60, 0) # Tilt it down
-        # We can also use sun_direction from config
+        dlnp.setHpr(0, light_cfg.get("sun_tilt", -60.0), 0) # Tilt it down
+
         dir = Vec3(*light_cfg["sun_direction"])
         dlnp.lookAt(dir)
         parent.setLight(dlnp)
         
-        # Ambient light
         alight = AmbientLight('ambient')
         alight.setColor(Vec4(*light_cfg["ambient_color"]))
         alnp = parent.attachNewNode(alight)
@@ -257,7 +262,7 @@ class MapRenderer:
             if s not in self.settlement_nodes:
                 node = loader.loadModel("models/box")
                 node.reparentTo(self.root)
-                # Position on top of the tile
+                # on top of the tile
                 h = s.tile.elevation * height_scale
                 node.setPos(s.tile.x + 0.5, s.tile.y + 0.5, h)
                 node.setColor(*vis_cfg["settlement_color"])

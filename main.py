@@ -1,6 +1,7 @@
 import tomllib
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import WindowProperties
+from direct.showbase.ShowBaseGlobal import globalClock
+from panda3d.core import WindowProperties, Vec2, Vec3, Quat
 from direct.task import Task
 from game_world import WorldGenerator, MapRenderer, WorldSimulation, TurnManager
 
@@ -11,7 +12,7 @@ def load_config():
 class InputHandler:
     def __init__(self, base):
         self.base = base
-        self.key_map = {"up": False, "down": False, "left": False, "right": False}
+        self.key_map = {"up": False, "down": False, "left": False, "right": False, "mouse2": False, "mouse3": False}
         
         self.base.accept("w", self._update_key_map, ["up", True])
         self.base.accept("w-up", self._update_key_map, ["up", False])
@@ -21,6 +22,11 @@ class InputHandler:
         self.base.accept("a-up", self._update_key_map, ["left", False])
         self.base.accept("d", self._update_key_map, ["right", True])
         self.base.accept("d-up", self._update_key_map, ["right", False])
+        
+        self.base.accept("mouse2", self._update_key_map, ["mouse2", True])
+        self.base.accept("mouse2-up", self._update_key_map, ["mouse2", False])
+        self.base.accept("mouse3", self._update_key_map, ["mouse3", True])
+        self.base.accept("mouse3-up", self._update_key_map, ["mouse3", False])
 
     def _update_key_map(self, key, state):
         self.key_map[key] = state
@@ -35,16 +41,22 @@ class CameraController:
         self.input_handler = input_handler
         self.config = config
         
-        # Camera configuration
         cam_cfg = config["camera"]
         self.zoom_level = cam_cfg["start_pos"][2]
         self.min_zoom = cam_cfg["min_zoom"]
         self.max_zoom = cam_cfg["max_zoom"]
         self.move_speed = cam_cfg["move_speed"]
         self.zoom_speed = cam_cfg["zoom_speed"]
+        self.pan_speed = cam_cfg["pan_speed"]
+        self.rotate_speed = cam_cfg["rotate_speed"]
+        self.zoom_ref = cam_cfg["zoom_ref"]
+        self.pitch_limit_min = cam_cfg["pitch_limit_min"]
+        self.pitch_limit_max = cam_cfg["pitch_limit_max"]
+        
+        self.last_mouse_pos = None
         
         self.camera.setPos(*cam_cfg["start_pos"])
-        self.camera.setHpr(0, -90, 0) # Look straight down
+        self.camera.setHpr(*cam_cfg["start_hpr"])
         self.base.camLens.setFov(cam_cfg["fov"])
         
         self.base.accept("wheel_up", self.adjust_zoom, [-self.zoom_speed])
@@ -59,21 +71,49 @@ class CameraController:
     def update(self, task):
         dt = globalClock.getDt()
         pos = self.camera.getPos()
+        hpr = self.camera.getHpr()
         
-        # Speed scales with zoom for smoother navigation
-        # We use the initial start zoom (40) as a reference point for scaling
-        actual_speed = self.move_speed * (self.zoom_level / 40.0)
+        # Scale speed with zoom
+        zoom_scale = (self.zoom_level / self.zoom_ref)
+        actual_speed = self.move_speed * zoom_scale
         
+        h_quat = Quat()
+        h_quat.setHpr(Vec3(hpr.getX(), 0, 0))
+        forward = h_quat.getForward()
+        right = h_quat.getRight()
+
+        # Keyboard
         if self.input_handler.is_active("up"):
-            pos.setY(pos.getY() + actual_speed * dt)
+            pos += forward * actual_speed * dt
         if self.input_handler.is_active("down"):
-            pos.setY(pos.getY() - actual_speed * dt)
+            pos -= forward * actual_speed * dt
         if self.input_handler.is_active("left"):
-            pos.setX(pos.getX() - actual_speed * dt)
+            pos -= right * actual_speed * dt
         if self.input_handler.is_active("right"):
-            pos.setX(pos.getX() + actual_speed * dt)
+            pos += right * actual_speed * dt
+            
+        # Mouse
+        if self.base.mouseWatcherNode.hasMouse():
+            mpos = self.base.mouseWatcherNode.getMouse()
+            if self.input_handler.is_active("mouse2"): # Panning
+                if self.last_mouse_pos:
+                    delta = mpos - self.last_mouse_pos
+                    pos -= right * delta.getX() * self.pan_speed * zoom_scale
+                    pos -= forward * delta.getY() * self.pan_speed * zoom_scale
+                self.last_mouse_pos = Vec2(mpos.getX(), mpos.getY())
+            elif self.input_handler.is_active("mouse3"): # Rotation
+                if self.last_mouse_pos:
+                    delta = mpos - self.last_mouse_pos
+                    hpr.setX(hpr.getX() - delta.getX() * self.rotate_speed)
+                    hpr.setY(max(self.pitch_limit_min, min(self.pitch_limit_max, hpr.getY() + delta.getY() * self.rotate_speed)))
+                self.last_mouse_pos = Vec2(mpos.getX(), mpos.getY())
+            else:
+                self.last_mouse_pos = None
+        else:
+            self.last_mouse_pos = None
             
         self.camera.setPos(pos)
+        self.camera.setHpr(hpr)
         return Task.cont
 
 class Game(ShowBase):
@@ -85,11 +125,9 @@ class Game(ShowBase):
         self.disableMouse()
         self.render.setShaderAuto()
         
-        # Input and Camera
         self.input_handler = InputHandler(self)
         self.camera_controller = CameraController(self, self.input_handler, self.game_config)
         
-        # World setup
         map_size = self.game_config["map"]["size"]
         self.generator = WorldGenerator(map_size, self.game_config)
         self.world_map = self.generator.generate()
@@ -99,7 +137,6 @@ class Game(ShowBase):
         self.simulation = WorldSimulation(self.world_map, self.game_config)
         self.turn_mgr = TurnManager(self.simulation)
 
-        # Global input for game control
         self.accept("space", self.next_turn)
 
     def _setup_window(self):
