@@ -14,17 +14,61 @@ class TileType(Enum):
     TUNDRA = auto()
     ROCKY = auto()
 
+class ResourceType(Enum):
+    WOOD = auto()
+    GRAIN = auto()
+    FISH = auto()
+    STONE = auto()
+    IRON = auto()
+    COAL = auto()
+    TIN = auto()
+    COPPER = auto()
+    GOLD = auto()
+    SILVER = auto()
+
 class Tile:
     def __init__(self, x, y, elevation, moisture, thresholds):
         self.x = x
         self.y = y
         self.elevation = elevation
         self.moisture = moisture
-        self.resource = None
+        self.resources = {res: 0.0 for res in ResourceType}
+        self.potentials = {res: 0.0 for res in ResourceType}
         self.settlement = None
         self.thresholds = thresholds
         self.type = self._determine_type()
+        self._init_potentials()
         
+    def _init_potentials(self):
+        if self.type == TileType.FOREST:
+            self.potentials[ResourceType.WOOD] = 1.0
+        elif self.type == TileType.GRASSLAND:
+            self.potentials[ResourceType.GRAIN] = 1.0
+            self.potentials[ResourceType.WOOD] = 0.2
+        elif self.type == TileType.OCEAN or self.type == TileType.FRESH_WATER:
+            self.potentials[ResourceType.FISH] = 1.0
+        elif self.type == TileType.ROCKY:
+            self.potentials[ResourceType.STONE] = 1.0
+        elif self.type == TileType.TUNDRA:
+            self.potentials[ResourceType.STONE] = 0.4
+            
+        # Metals
+        if self.type == TileType.ROCKY:
+            seed = (self.x * 1337 + self.y * 42) # TODO: configurable seed
+            rng = random.Random(seed)
+            if rng.random() < 0.4:
+                self.potentials[ResourceType.IRON] = rng.uniform(0.5, 1.0)
+            if rng.random() < 0.3:
+                self.potentials[ResourceType.COAL] = rng.uniform(0.5, 1.0)
+            if rng.random() < 0.2:
+                self.potentials[ResourceType.COPPER] = rng.uniform(0.3, 0.8)
+            if rng.random() < 0.2:
+                self.potentials[ResourceType.TIN] = rng.uniform(0.3, 0.8)
+            if rng.random() < 0.05:
+                self.potentials[ResourceType.GOLD] = rng.uniform(0.1, 0.5)
+            if rng.random() < 0.05:
+                self.potentials[ResourceType.SILVER] = rng.uniform(0.1, 0.5)
+
     def _determine_type(self):
         t = self.thresholds
         if self.elevation < t["ocean"]:
@@ -156,6 +200,8 @@ class MapRenderer:
         self.config = config
         self.root = NodePath("MapRoot")
         self.settlement_nodes = {} # Settlement -> NodePath
+        self.vdata = None
+        self.view_mode = "TERRAIN" # "TERRAIN" or ResourceType
 
     def _get_elev(self, x, y):
         size = self.world_map.size
@@ -164,13 +210,19 @@ class MapRenderer:
         ty = max(0, min(size - 1, y))
         return self.world_map.get_tile(tx, ty).elevation
 
-    def render(self, parent, loader):
-        self.root.reparentTo(parent)
+    def set_view_mode(self, mode):
+        """mode can be 'TERRAIN' or a ResourceType"""
+        self.view_mode = mode
+        self.update_colors()
+
+    def update_colors(self):
+        if not self.vdata:
+            return
+            
+        color_writer = GeomVertexWriter(self.vdata, 'color')
+        color_writer.setRow(0)
         
         color_cfg = self.config["colors"]
-        vis_cfg = self.config["visuals"]
-        height_scale = vis_cfg["height_scale"]
-        
         type_colors = {
             TileType.OCEAN: Vec4(*color_cfg["OCEAN"]),
             TileType.FRESH_WATER: Vec4(*color_cfg["FRESH_WATER"]),
@@ -181,52 +233,71 @@ class MapRenderer:
             TileType.ROCKY: Vec4(*color_cfg["ROCKY"]),
         }
         
-        # Use V3n3c4 format for vertex, normal, and color
-        format = GeomVertexFormat.getV3n3c4()
-        vdata = GeomVertexData('map_data', format, Geom.UHStatic)
+        for (x, y), tile in self.world_map.tiles.items():
+            if self.view_mode == "TERRAIN":
+                c = type_colors.get(tile.type, Vec4(1, 1, 1, 1))
+            else:
+                amount = tile.resources.get(self.view_mode, 0.0)
+                if amount == 0:
+                    val = tile.potentials.get(self.view_mode, 0.0)
+                    c = Vec4(0.2, 0.2, 0.2 + val * 0.8, 1.0) # Blue for potential
+                else:
+                    val = min(1.0, amount / 100.0) # Normalize
+                    c = Vec4(val, 0.2, 0.2, 1.0) # Red for amount
+            
+            for _ in range(4):
+                color_writer.addData4(c)
+
+    def render(self, parent, loader):
+        self.root.reparentTo(parent)
         
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color = GeomVertexWriter(vdata, 'color')
+        vis_cfg = self.config["visuals"]
+        height_scale = vis_cfg["height_scale"]
+        
+        format = GeomVertexFormat.getV3n3c4()
+        self.vdata = GeomVertexData('map_data', format, Geom.UHDynamic)
+        
+        vertex = GeomVertexWriter(self.vdata, 'vertex')
+        normal = GeomVertexWriter(self.vdata, 'normal')
         
         prim = GeomTriangles(Geom.UHStatic)
         
         v_idx = 0
-        for (x, y), tile in self.world_map.tiles.items():
-            c = type_colors.get(tile.type, Vec4(1, 1, 1, 1))
-            
-            # Corner heights
-            h00 = self._get_elev(x, y) * height_scale
-            h10 = self._get_elev(x + 1, y) * height_scale
-            h11 = self._get_elev(x + 1, y + 1) * height_scale
-            h01 = self._get_elev(x, y + 1) * height_scale
-            
-            # Vertices
-            v0 = Vec3(x, y, h00)
-            v1 = Vec3(x + 1, y, h10)
-            v2 = Vec3(x + 1, y + 1, h11)
-            v3 = Vec3(x, y + 1, h01)
-            
-            vertex.addData3(v0)
-            vertex.addData3(v1)
-            vertex.addData3(v2)
-            vertex.addData3(v3)
-            
-            # Calculate normal for the quad (simplified as average of two triangles)
-            side1 = v1 - v0
-            side2 = v3 - v0
-            n = side1.cross(side2)
-            n.normalize()
-            
-            for _ in range(4):
-                normal.addData3(n)
-                color.addData4(c)
+        for y in range(self.world_map.size):
+            for x in range(self.world_map.size):
+                # Corner heights
+                h00 = self._get_elev(x, y) * height_scale
+                h10 = self._get_elev(x + 1, y) * height_scale
+                h11 = self._get_elev(x + 1, y + 1) * height_scale
+                h01 = self._get_elev(x, y + 1) * height_scale
                 
-            prim.addVertices(v_idx, v_idx + 1, v_idx + 2)
-            prim.addVertices(v_idx, v_idx + 2, v_idx + 3)
-            v_idx += 4
+                # Vertices
+                v0 = Vec3(x, y, h00)
+                v1 = Vec3(x + 1, y, h10)
+                v2 = Vec3(x + 1, y + 1, h11)
+                v3 = Vec3(x, y + 1, h01)
+                
+                vertex.addData3(v0)
+                vertex.addData3(v1)
+                vertex.addData3(v2)
+                vertex.addData3(v3)
+                
+                # Calculate normal
+                side1 = v1 - v0
+                side2 = v3 - v0
+                n = side1.cross(side2)
+                n.normalize()
+                
+                for _ in range(4):
+                    normal.addData3(n)
+                    
+                prim.addVertices(v_idx, v_idx + 1, v_idx + 2)
+                prim.addVertices(v_idx, v_idx + 2, v_idx + 3)
+                v_idx += 4
             
-        geom = Geom(vdata)
+        self.update_colors() # Initial color set
+        
+        geom = Geom(self.vdata)
         geom.addPrimitive(prim)
         
         node = GeomNode('map_geom')

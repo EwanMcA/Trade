@@ -138,6 +138,14 @@ class Game(ShowBase):
         self.turn_mgr = TurnManager(self.simulation)
 
         self.accept("space", self.next_turn)
+        self.accept("t", self.renderer.set_view_mode, ["TERRAIN"])
+        
+        from game_world import ResourceType
+        res_keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+        resources = list(ResourceType)
+        for i, res in enumerate(resources):
+            if i < len(res_keys):
+                self.accept(res_keys[i], self.renderer.set_view_mode, [res])
 
     def _setup_window(self):
         win_cfg = self.game_config["window"]
