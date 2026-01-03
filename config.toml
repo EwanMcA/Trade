@@ -43,15 +43,17 @@ arid_moisture = 0.25
 grassland_moisture = 0.55
 
 [simulation]
-growth_chance = 0.3
-spawn_chance = 0.2
+growth_chance = 0.00001
+water_growth_bonus = 0.0002
+cluster_bonus = 0.01
+settlement_spawn_chance = 0.2
 river_source_min_elevation = 0.8
 river_stop_chance = 0.2
 
 [visuals]
-settlement_scale = [0.4, 0.4, 0.5]
+settlement_scale = [0.3, 0.3, 0.3]
 settlement_color = [0.4, 0.4, 0.4, 1.0]
-height_scale = 20.0
+height_scale = 10.0
 
 [lighting]
 sun_direction = [1, -1, -1]
@@ -61,7 +63,7 @@ sun_tilt = -60.0
 
 [colors]
 OCEAN = [0.1, 0.3, 0.6, 1.0]
-FRESH_WATER = [0.3, 0.6, 0.9, 1.0]
+FRESH_WATER = [0.35, 0.65, 0.95, 1.0]
 ARID = [0.8, 0.7, 0.4, 1.0]
 GRASSLAND = [0.4, 0.7, 0.3, 1.0]
 FOREST = [0.1, 0.4, 0.1, 1.0]

@@ -11,6 +11,19 @@ class TileType(Enum):
     TUNDRA = auto()
     ROCKY = auto()
 
+class BuildingType(Enum):
+    RESIDENTIAL = auto()
+
+class Building:
+    def __init__(self, b_type, tile, local_pos, settlement=None):
+        self.type = b_type
+        self.tile = tile
+        self.local_pos = local_pos # (x, y) relative to tile origin, 0-1
+        self.settlement = settlement
+        if settlement:
+            settlement.buildings.append(self)
+        self.tile.buildings.append(self)
+
 class ResourceType(Enum):
     WOOD = auto()
     GRAIN = auto()
@@ -31,7 +44,7 @@ class Tile:
         self.moisture = moisture
         self.resources = {res: 0.0 for res in ResourceType}
         self.potentials = {res: 0.0 for res in ResourceType}
-        self.settlement = None
+        self.buildings = []
         self.thresholds = thresholds
         self.type = self._determine_type()
         self._init_potentials()
@@ -90,8 +103,11 @@ class Settlement:
     def __init__(self, name, tile):
         self.name = name
         self.tile = tile
-        self.size = 1 # Population
-        self.tile.settlement = self
+        self.buildings = []
+
+    @property
+    def size(self):
+        return len(self.buildings)
 
 class WorldMap:
     def __init__(self, size=40):
@@ -109,42 +125,86 @@ class WorldSimulation:
 
     def simulate_turn(self):
         self._simulate_growth()
-        self._spawn_new_settlements()
+        # self._spawn_new_settlements()
 
     def _simulate_growth(self):
         sim_cfg = self.config["simulation"]
-        for s in self.world_map.settlements:
-            near_water = False
+        base_growth = sim_cfg.get("growth_chance")
+        water_bonus = sim_cfg.get("water_growth_bonus")
+        cluster_bonus = sim_cfg.get("cluster_bonus")
+        
+        for (x, y), tile in self.world_map.tiles.items():
+            if tile.has_water:
+                continue
+                
+            chance = base_growth
+            
+            # Water bonus
+            has_nearby_water = False
             for dx in [-1, 0, 1]:
                 for dy in [-1, 0, 1]:
-                    neighbor = self.world_map.get_tile(s.tile.x + dx, s.tile.y + dy)
-                    if neighbor and neighbor.has_water:
-                        near_water = True
+                    nb = self.world_map.get_tile(x + dx, y + dy)
+                    if nb and nb.has_water:
+                        has_nearby_water = True
                         break
+                if has_nearby_water: break
             
-            if near_water and random.random() < sim_cfg["growth_chance"]:
-                s.size += 1
-                print(f"Settlement at {s.tile.x}, {s.tile.y} grew to size {s.size}")
+            if has_nearby_water:
+                chance += water_bonus
+                
+            # Clustering bonus
+            nearby_buildings = 0
+            for dx in [-6, 0, 6]:
+                for dy in [-6, 0, 6]:
+                    nb = self.world_map.get_tile(x + dx, y + dy)
+                    if nb:
+                        nearby_buildings += len(nb.buildings)
+            
+            chance += nearby_buildings * cluster_bonus
+            
+            if random.random() < chance:
+                # Find nearby settlement to join
+                closest_s = None
+                min_dist = 3.0 # Maximum distance to join a settlement
+                for s in self.world_map.settlements:
+                    dist = ((s.tile.x - x)**2 + (s.tile.y - y)**2)**0.5
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_s = s
+                
+                lx, ly = random.random(), random.random()
+                Building(BuildingType.RESIDENTIAL, tile, (lx, ly), settlement=closest_s)
 
     def _spawn_new_settlements(self):
         sim_cfg = self.config["simulation"]
-        if random.random() < sim_cfg["spawn_chance"]:
+        # A settlement might spawn if there are "lonely" buildings clustering
+        if random.random() < sim_cfg["settlement_spawn_chance"]:
             potential_tiles = []
             for (x, y), tile in self.world_map.tiles.items():
-                if not tile.settlement and not tile.has_water:
-                    has_nearby_water = False
-                    for dx in [-1, 0, 1]:
-                        for dy in [-1, 0, 1]:
-                            neighbor = self.world_map.get_tile(x + dx, y + dy)
-                            if neighbor and neighbor.has_water:
-                                has_nearby_water = True
-                                break
-                    if has_nearby_water:
+                # Only spawn if there are buildings but no nearby settlement
+                if tile.buildings and not tile.has_water:
+                    has_nearby_settlement = False
+                    for s in self.world_map.settlements:
+                        dist = ((s.tile.x - x)**2 + (s.tile.y - y)**2)**0.5
+                        if dist < 5.0:
+                            has_nearby_settlement = True
+                            break
+                    if not has_nearby_settlement:
                         potential_tiles.append(tile)
             
             if potential_tiles:
                 target = random.choice(potential_tiles)
                 new_s = Settlement(f"City {len(self.world_map.settlements)}", target)
+                # Assign nearby lonely buildings to this new settlement
+                for dx in range(-3, 4):
+                    for dy in range(-3, 4):
+                        nb = self.world_map.get_tile(target.x + dx, target.y + dy)
+                        if nb:
+                            for b in nb.buildings:
+                                if b.settlement is None:
+                                    b.settlement = new_s
+                                    new_s.buildings.append(b)
+                                    
                 self.world_map.settlements.append(new_s)
                 print(f"New settlement founded at {target.x}, {target.y}")
 

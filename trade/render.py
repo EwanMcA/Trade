@@ -11,7 +11,7 @@ class MapRenderer:
         self.world_map = world_map
         self.config = config
         self.root = NodePath("MapRoot")
-        self.settlement_nodes = {} # Settlement -> NodePath
+        self.building_nodes = {} # Building -> NodePath
         self.vdata = None
         self.view_mode = "TERRAIN" # "TERRAIN" or ResourceType
 
@@ -21,6 +21,16 @@ class MapRenderer:
         tx = max(0, min(size - 1, x))
         ty = max(0, min(size - 1, y))
         return self.world_map.get_tile(tx, ty).elevation
+
+    def _get_interpolated_elev(self, x, y, lx, ly):
+        h00 = self._get_elev(x, y)
+        h10 = self._get_elev(x + 1, y)
+        h11 = self._get_elev(x + 1, y + 1)
+        h01 = self._get_elev(x, y + 1)
+        
+        h_bottom = h00 * (1 - lx) + h10 * lx
+        h_top = h01 * (1 - lx) + h11 * lx
+        return h_bottom * (1 - ly) + h_top * ly
 
     def set_view_mode(self, mode):
         """mode can be 'TERRAIN' or a ResourceType"""
@@ -45,20 +55,22 @@ class MapRenderer:
             TileType.ROCKY: Vec4(*color_cfg["ROCKY"]),
         }
         
-        for (x, y), tile in self.world_map.tiles.items():
-            if self.view_mode == "TERRAIN":
-                c = type_colors.get(tile.type, Vec4(1, 1, 1, 1))
-            else:
-                amount = tile.resources.get(self.view_mode, 0.0)
-                if amount == 0:
-                    val = tile.potentials.get(self.view_mode, 0.0)
-                    c = Vec4(0.2, 0.2, 0.2 + val * 0.8, 1.0) # Blue for potential
+        for y in range(self.world_map.size):
+            for x in range(self.world_map.size):
+                tile = self.world_map.get_tile(x, y)
+                if self.view_mode == "TERRAIN":
+                    c = type_colors.get(tile.type, Vec4(1, 1, 1, 1))
                 else:
-                    val = min(1.0, amount / 100.0) # Normalize
-                    c = Vec4(val, 0.2, 0.2, 1.0) # Red for amount
-            
-            for _ in range(4):
-                color_writer.addData4(c)
+                    amount = tile.resources.get(self.view_mode, 0.0)
+                    if amount == 0:
+                        val = tile.potentials.get(self.view_mode, 0.0)
+                        c = Vec4(0.2, 0.2, 0.2 + val * 0.8, 1.0) # Blue for potential
+                    else:
+                        val = min(1.0, amount / 100.0) # Normalize
+                        c = Vec4(val, 0.2, 0.2, 1.0) # Red for amount
+                
+                for _ in range(4):
+                    color_writer.addData4(c)
 
     def render(self, parent, loader):
         self.root.reparentTo(parent)
@@ -118,7 +130,7 @@ class MapRenderer:
         
         self._setup_lighting(parent)
         
-        self.update_settlements(loader)
+        self.update_buildings(loader)
 
     def _setup_lighting(self, parent):
         light_cfg = self.config["lighting"]
@@ -137,20 +149,25 @@ class MapRenderer:
         alnp = parent.attachNewNode(alight)
         parent.setLight(alnp)
 
-    def update_settlements(self, loader):
+    def update_buildings(self, loader):
         vis_cfg = self.config["visuals"]
         height_scale = vis_cfg["height_scale"]
         
-        for s in self.world_map.settlements:
-            if s not in self.settlement_nodes:
-                node = loader.loadModel("models/box")
-                node.reparentTo(self.root)
-                # on top of the tile
-                h = s.tile.elevation * height_scale
-                node.setPos(s.tile.x + 0.5, s.tile.y + 0.5, h)
-                node.setColor(*vis_cfg["settlement_color"])
-                self.settlement_nodes[s] = node
-            
-            # Update scale based on size
-            base_scale = vis_cfg["settlement_scale"]
-            self.settlement_nodes[s].setScale(base_scale[0], base_scale[1], s.size * base_scale[2])
+        for (x, y), tile in self.world_map.tiles.items():
+            for building in tile.buildings:
+                if building not in self.building_nodes:
+                    node = loader.loadModel("models/box")
+                    node.reparentTo(self.root)
+                    
+                    # Position: tile origin + local offset
+                    h = self._get_interpolated_elev(tile.x, tile.y, building.local_pos[0], building.local_pos[1]) * height_scale
+                    node.setPos(tile.x + building.local_pos[0],
+                                tile.y + building.local_pos[1],
+                                h)
+                    
+                    node.setColor(*vis_cfg["settlement_color"])
+                    
+                    b_scale = vis_cfg["settlement_scale"]
+                    node.setScale(b_scale[0], b_scale[1], b_scale[2])
+                    
+                    self.building_nodes[building] = node

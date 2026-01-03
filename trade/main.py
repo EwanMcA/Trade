@@ -66,7 +66,7 @@ class Game(ShowBase):
 
     def next_turn(self):
         self.turn_mgr.next_turn()
-        self.renderer.update_settlements(self.loader)
+        self.renderer.update_buildings(self.loader)
 
 if __name__ == "__main__":
     game = Game()
