@@ -1,6 +1,7 @@
 import tomllib
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import WindowProperties
+from direct.gui.DirectGui import DirectButton
 
 from game_world import WorldSimulation, TurnManager
 from generation import WorldGenerator
@@ -34,6 +35,8 @@ class Game(ShowBase):
         self.simulation = WorldSimulation(self.world_map, self.game_config)
         self.turn_mgr = TurnManager(self.simulation)
 
+        self._setup_ui()
+
         self.accept("space", self.next_turn)
         self.accept("t", self.renderer.set_view_mode, ["TERRAIN"])
         
@@ -50,6 +53,14 @@ class Game(ShowBase):
         props.setTitle(win_cfg["title"])
         props.setSize(win_cfg["width"], win_cfg["height"])
         self.win.requestProperties(props)
+
+    def _setup_ui(self):
+        self.end_turn_btn = DirectButton(
+            text="End Turn",
+            scale=0.1,
+            pos=(1.1, 0, -0.9),
+            command=self.next_turn
+        )
 
     def next_turn(self):
         self.turn_mgr.next_turn()

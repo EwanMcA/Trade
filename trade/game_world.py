@@ -152,8 +152,18 @@ class TurnManager:
     def __init__(self, simulation):
         self.simulation = simulation
         self.turn_count = 0
+        self.action_queue = [] # List of (function, args, kwargs)
         
+    def add_action(self, func, *args, **kwargs):
+        """Add an action to be processed next turn."""
+        self.action_queue.append((func, args, kwargs))
+
     def next_turn(self):
         self.turn_count += 1
         print(f"--- Turn {self.turn_count} ---")
+        
         self.simulation.simulate_turn()
+        
+        while self.action_queue:
+            func, args, kwargs = self.action_queue.pop(0)
+            func(*args, **kwargs)
