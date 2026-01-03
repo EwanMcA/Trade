@@ -58,7 +58,9 @@ class Game(ShowBase):
         self.end_turn_btn = DirectButton(
             text="End Turn",
             scale=0.1,
-            pos=(1.1, 0, -0.9),
+            pos=(1.4, 0, -0.9),
+            frameColor=(0.2, 0.9, 0.2, 1),
+            text_scale=0.6,
             command=self.next_turn
         )
 
