@@ -2,7 +2,8 @@ import tomllib
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import WindowProperties
 
-from game_world import WorldGenerator, WorldSimulation, TurnManager
+from game_world import WorldSimulation, TurnManager
+from generation import WorldGenerator
 from input import InputHandler
 from camera import CameraController
 from render import MapRenderer
