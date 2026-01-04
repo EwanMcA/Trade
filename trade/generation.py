@@ -30,6 +30,23 @@ class WorldGenerator:
                 e = (elev_noise.noise(x * gen_cfg["elevation_scale_1"], y * gen_cfg["elevation_scale_1"]) * blend + 
                      elev_noise.noise(x * gen_cfg["elevation_scale_2"], y * gen_cfg["elevation_scale_2"]) * (1.0 - blend))
                 e = (e + 1.0) / 2.0
+                
+                # Apply Ocean Bias
+                bias_strength = gen_cfg.get("ocean_bias_strength", 0.0)
+                bias_direction = gen_cfg.get("ocean_bias_direction", "west").lower()
+                
+                bias_factor = 0.0
+                if bias_direction == "west":
+                    bias_factor = (1.0 - (x / self.size)) ** 4
+                elif bias_direction == "east":
+                    bias_factor = (x / self.size) ** 4
+                elif bias_direction == "south":
+                    bias_factor = (1.0 - (y / self.size)) ** 4
+                elif bias_direction == "north":
+                    bias_factor = (y / self.size) ** 4
+                    
+                e -= bias_strength * bias_factor
+                
                 e = (e - gen_cfg["norm_offset"]) / gen_cfg["norm_range"]
                 e = max(0, min(1, e))
                 
