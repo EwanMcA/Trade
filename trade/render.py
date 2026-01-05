@@ -3,7 +3,7 @@ from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter
 from panda3d.core import Geom, GeomTriangles, GeomNode
 from panda3d.core import DirectionalLight, AmbientLight
 
-from game_world import TileType
+from game_world import TileType, BuildingType
 
 
 class MapRenderer:
@@ -153,6 +153,16 @@ class MapRenderer:
         vis_cfg = self.config["visuals"]
         height_scale = vis_cfg["height_scale"]
         
+        type_styles = {
+            BuildingType.RESIDENTIAL_HIGH: {"color": (0.7, 0.2, 0.2, 1.0), "scale": (0.35, 0.35, 0.6)},
+            BuildingType.RESIDENTIAL_LOW: {"color": (0.5, 0.5, 0.5, 1.0), "scale": (0.25, 0.25, 0.25)},
+            BuildingType.LUMBER_YARD: {"color": (0.4, 0.2, 0.0, 1.0), "scale": (0.4, 0.4, 0.3)},
+            BuildingType.FARM: {"color": (0.8, 0.8, 0.2, 1.0), "scale": (0.6, 0.6, 0.1)},
+            BuildingType.DOCK: {"color": (0.1, 0.3, 0.6, 1.0), "scale": (0.4, 0.6, 0.15)},
+            BuildingType.MINE: {"color": (0.2, 0.2, 0.2, 1.0), "scale": (0.3, 0.3, 0.4)},
+            BuildingType.QUARRY: {"color": (0.6, 0.6, 0.6, 1.0), "scale": (0.5, 0.5, 0.2)},
+        }
+        
         for (x, y), tile in self.world_map.tiles.items():
             for building in tile.buildings:
                 if building not in self.building_nodes:
@@ -165,9 +175,9 @@ class MapRenderer:
                                 tile.y + building.local_pos[1],
                                 h)
                     
-                    node.setColor(*vis_cfg["settlement_color"])
+                    style = type_styles.get(building.type, {"color": (1, 1, 1, 1), "scale": (0.3, 0.3, 0.3)})
                     
-                    b_scale = vis_cfg["settlement_scale"]
-                    node.setScale(b_scale[0], b_scale[1], b_scale[2])
+                    node.setColor(*style["color"])
+                    node.setScale(*style["scale"])
                     
                     self.building_nodes[building] = node

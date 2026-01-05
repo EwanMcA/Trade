@@ -48,7 +48,8 @@ grassland_moisture = 0.55
 growth_chance = 0.00001
 water_growth_bonus = 0.0002
 cluster_bonus = 0.01
-settlement_spawn_chance = 0.2
+settlement_spawn_chance = 0.5
+settlement_min_distance = 20.0
 river_source_min_elevation = 0.8
 river_stop_chance = 0.2
 
