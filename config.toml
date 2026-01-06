@@ -45,7 +45,7 @@ arid_moisture = 0.25
 grassland_moisture = 0.55
 
 [simulation]
-growth_chance = 0.00001
+growth_chance = 0.01
 water_growth_bonus = 0.0002
 cluster_bonus = 0.01
 settlement_spawn_chance = 0.5

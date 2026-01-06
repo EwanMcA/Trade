@@ -6,6 +6,8 @@ from panda3d.core import DirectionalLight, AmbientLight
 from game_world import TileType, BuildingType
 
 
+# TODO: SLOW AT HIGH BUILDING COUNTS
+
 class MapRenderer:
     def __init__(self, world_map, config):
         self.world_map = world_map

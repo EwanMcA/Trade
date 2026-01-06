@@ -29,10 +29,11 @@ class Game(ShowBase):
         map_size = self.game_config["map"]["size"]
         self.generator = WorldGenerator(map_size, self.game_config)
         self.world_map = self.generator.generate()
+        self.simulation = WorldSimulation(self.world_map, self.game_config)
+
         self.renderer = MapRenderer(self.world_map, self.game_config)
         self.renderer.render(self.render, self.loader)
         
-        self.simulation = WorldSimulation(self.world_map, self.game_config)
         self.turn_mgr = TurnManager(self.simulation)
 
         self._setup_ui()

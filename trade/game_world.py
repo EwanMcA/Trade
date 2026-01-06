@@ -128,9 +128,11 @@ class WorldSimulation:
     def __init__(self, world_map, config):
         self.world_map = world_map
         self.config = config
+        self._simulate_growth(0.5)
 
     def simulate_turn(self):
-        self._simulate_growth()
+        base_growth = self.config["simulation"].get("growth_chance", 0.0001)
+        self._simulate_growth(base_growth)
         self._spawn_new_settlements()
 
     def _get_nearest_settlement(self, x, y):
@@ -155,15 +157,12 @@ class WorldSimulation:
     def _rand_pos(self):
         return (random.random(), random.random())
 
-    def _simulate_growth(self):
-        # TODO: Have an initial state and then much less growth
-        
-        sim_cfg = self.config["simulation"]
-        base_growth = sim_cfg.get("growth_chance", 0.0001)
-        
+    def _simulate_growth(self, growth_modifier):
         # TODO: optimization - probably don't need to loop the whole map
         for (x, y), tile in self.world_map.tiles.items():
             if tile.has_water or tile.buildings:
+                continue
+            if random.random() > growth_modifier:
                 continue
 
             if self._try_place_resource_building(tile):
@@ -185,8 +184,8 @@ class WorldSimulation:
                         continue
                 
             else:
-                # Spontaneous growth to start new clusters
-                if random.random() < base_growth:
+                if random.random() < 0.01:
+                    # Spontaneous growth to start new clusters
                     Building(BuildingType.RESIDENTIAL_LOW, tile, self._rand_pos(), None)
 
     def _try_place_resource_building(self, tile):
@@ -199,19 +198,19 @@ class WorldSimulation:
 
         # Lumber Yards on Forest
         if tile.type == TileType.FOREST:
-            if random.random() < 0.0005:
+            if random.random() < 0.005:
                 Building(BuildingType.LUMBER_YARD, tile, self._rand_pos())
                 return True
         
         # Farms on non-arid Grassland
         if tile.type == TileType.GRASSLAND:
-            if random.random() < 0.0005:
+            if random.random() < 0.005:
                 Building(BuildingType.FARM, tile, self._rand_pos())
                 return True
         
         # Docks on water edge
         if self._is_water_edge(tile):
-            if random.random() < 0.0003:
+            if random.random() < 0.03:
                 Building(BuildingType.DOCK, tile, self._rand_pos())
                 return True
         
@@ -222,12 +221,12 @@ class WorldSimulation:
             has_metals = any(tile.potentials.get(m, 0) > 0 for m in metals)
             
             if has_metals or tile.type == TileType.ROCKY:
-                if random.random() < 0.0004:
+                if random.random() < 0.04:
                     Building(BuildingType.MINE, tile, self._rand_pos())
                     return True
             
             if tile.potentials.get(ResourceType.STONE, 0) > 0.4:
-                if random.random() < 0.0004:
+                if random.random() < 0.04:
                     Building(BuildingType.QUARRY, tile, self._rand_pos())
                     return True
         
