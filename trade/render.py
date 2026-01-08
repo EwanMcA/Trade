@@ -3,7 +3,7 @@ from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter
 from panda3d.core import Geom, GeomTriangles, GeomNode
 from panda3d.core import DirectionalLight, AmbientLight
 
-from game_world import TileType, BuildingType
+from .constants import TileType, BuildingType
 
 
 # TODO: SLOW AT HIGH BUILDING COUNTS

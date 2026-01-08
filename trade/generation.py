@@ -1,6 +1,8 @@
 import random
 from panda3d.core import PerlinNoise2
-from game_world import Tile, TileType, WorldMap
+from .constants import TileType
+from .models import Tile
+from .map import WorldMap
 
 class WorldGenerator:
     def __init__(self, size, config):

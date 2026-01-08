@@ -3,11 +3,12 @@ from direct.showbase.ShowBase import ShowBase
 from panda3d.core import WindowProperties
 from direct.gui.DirectGui import DirectButton
 
-from game_world import WorldSimulation, TurnManager
-from generation import WorldGenerator
-from input import InputHandler
-from camera import CameraController
-from render import MapRenderer
+from .simulation import WorldSimulation, TurnManager
+from .constants import ResourceType
+from .generation import WorldGenerator
+from .input import InputHandler
+from .camera import CameraController
+from .render import MapRenderer
 
 
 def load_config():
@@ -41,7 +42,6 @@ class Game(ShowBase):
         self.accept("space", self.next_turn)
         self.accept("t", self.renderer.set_view_mode, ["TERRAIN"])
         
-        from game_world import ResourceType
         res_keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
         resources = list(ResourceType)
         for i, res in enumerate(resources):
