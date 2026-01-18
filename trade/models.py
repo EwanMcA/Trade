@@ -1,8 +1,9 @@
 import random
+from typing import List, Dict, Tuple, Optional, Any
 from .constants import TileType, ResourceType
 
 class Building:
-    def __init__(self, b_type, tile, local_pos, settlement=None):
+    def __init__(self, b_type: Any, tile: 'Tile', local_pos: Tuple[float, float], settlement: Optional['Settlement'] = None):
         self.type = b_type
         self.tile = tile
         self.local_pos = local_pos # (x, y) relative to tile origin, 0-1
@@ -12,19 +13,19 @@ class Building:
         self.tile.buildings.append(self)
 
 class Tile:
-    def __init__(self, x, y, elevation, moisture, thresholds):
+    def __init__(self, x: int, y: int, elevation: float, moisture: float, thresholds: Dict[str, float]):
         self.x = x
         self.y = y
         self.elevation = elevation
         self.moisture = moisture
-        self.resources = {res: 0.0 for res in ResourceType}
-        self.potentials = {res: 0.0 for res in ResourceType}
-        self.buildings = []
+        self.resources: Dict[ResourceType, float] = {res: 0.0 for res in ResourceType}
+        self.potentials: Dict[ResourceType, float] = {res: 0.0 for res in ResourceType}
+        self.buildings: List[Building] = []
         self.thresholds = thresholds
-        self.type = self._determine_type()
+        self.type: TileType = self._determine_type()
         self._init_potentials()
         
-    def _init_potentials(self):
+    def _init_potentials(self) -> None:
         if self.type == TileType.FOREST:
             self.potentials[ResourceType.WOOD] = 1.0
         elif self.type == TileType.GRASSLAND:
@@ -54,7 +55,7 @@ class Tile:
             if rng.random() < 0.05:
                 self.potentials[ResourceType.SILVER] = rng.uniform(0.1, 0.5)
 
-    def _determine_type(self):
+    def _determine_type(self) -> TileType:
         t = self.thresholds
         if self.elevation < t["ocean"]:
             return TileType.OCEAN
@@ -71,15 +72,15 @@ class Tile:
         return TileType.FOREST
 
     @property
-    def has_water(self):
+    def has_water(self) -> bool:
         return self.type in [TileType.OCEAN, TileType.FRESH_WATER]
 
 class Settlement:
-    def __init__(self, name, tile):
+    def __init__(self, name: str, tile: Tile):
         self.name = name
         self.tile = tile
-        self.buildings = []
+        self.buildings: List[Building] = []
 
     @property
-    def size(self):
+    def size(self) -> int:
         return len(self.buildings)

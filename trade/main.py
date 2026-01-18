@@ -9,6 +9,7 @@ from .generation import WorldGenerator
 from .input import InputHandler
 from .camera import CameraController
 from .render import MapRenderer
+from .assets import AssetManager
 
 
 def load_config():
@@ -26,6 +27,7 @@ class Game(ShowBase):
         
         self.input_handler = InputHandler(self)
         self.camera_controller = CameraController(self, self.input_handler, self.game_config)
+        self.asset_mgr = AssetManager(self.loader)
         
         map_size = self.game_config["map"]["size"]
         self.generator = WorldGenerator(map_size, self.game_config)
@@ -33,7 +35,7 @@ class Game(ShowBase):
         self.simulation = WorldSimulation(self.world_map, self.game_config)
 
         self.renderer = MapRenderer(self.world_map, self.game_config)
-        self.renderer.render(self.render, self.loader)
+        self.renderer.render(self.render, self.asset_mgr)
         
         self.turn_mgr = TurnManager(self.simulation)
 
@@ -67,7 +69,7 @@ class Game(ShowBase):
 
     def next_turn(self):
         self.turn_mgr.next_turn()
-        self.renderer.update_buildings(self.loader)
+        self.renderer.update_buildings(self.asset_mgr)
 
 if __name__ == "__main__":
     game = Game()
