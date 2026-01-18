@@ -50,21 +50,16 @@ class WorldSimulation:
             
             if nearest_s:
                 # Growth rules based on distance to settlement
-                if dist < 3.0:
+                if dist < 5.0:
                     # High density residential core
-                    if random.random() < 0.05:
+                    if random.random() < 0.1:
                         Building(BuildingType.RESIDENTIAL_HIGH, tile, self._rand_pos(), nearest_s)
                         continue
-                elif dist < 8.0:
+                elif dist < 10.0:
                     # Low density residential outskirts
-                    if random.random() < 0.02:
+                    if random.random() < 0.1:
                         Building(BuildingType.RESIDENTIAL_LOW, tile, self._rand_pos(), nearest_s)
                         continue
-                
-            else:
-                if random.random() < 0.01:
-                    # Spontaneous growth to start new clusters
-                    Building(BuildingType.RESIDENTIAL_LOW, tile, self._rand_pos(), None)
 
     def _try_place_resource_building(self, tile):
         # don't place if there are other buildings within 9 tiles
@@ -76,19 +71,19 @@ class WorldSimulation:
 
         # Lumber Yards on Forest
         if tile.type == TileType.FOREST:
-            if random.random() < 0.005:
+            if random.random() < 0.001:
                 Building(BuildingType.LUMBER_YARD, tile, self._rand_pos())
                 return True
         
         # Farms on non-arid Grassland
         if tile.type == TileType.GRASSLAND:
-            if random.random() < 0.005:
+            if random.random() < 0.001:
                 Building(BuildingType.FARM, tile, self._rand_pos())
                 return True
         
         # Docks on water edge
         if self._is_water_edge(tile):
-            if random.random() < 0.03:
+            if random.random() < 0.003:
                 Building(BuildingType.DOCK, tile, self._rand_pos())
                 return True
         
