@@ -117,11 +117,22 @@ class WorldSimulation:
                     potential_tiles.append(tile)
             
             if potential_tiles:
-                target = random.choice(potential_tiles)
-                new_s = Settlement(f"City {len(self.world_map.settlements)}", target)
+                tile = random.choice(potential_tiles)
+                new_s = Settlement(f"City {len(self.world_map.settlements)}", tile)
+                Building(BuildingType.RESIDENTIAL_LOW, tile, self._rand_pos(), new_s)
                                     
                 self.world_map.settlements.append(new_s)
-                print(f"New settlement founded at {target.x}, {target.y}")
+                print(f"New settlement founded at {tile.x}, {tile.y}")
+
+    def get_stats(self):
+        stats = {
+            "settlements": len(self.world_map.settlements),
+            "buildings": {}
+        }
+        for tile in self.world_map.tiles.values():
+            for b in tile.buildings:
+                stats["buildings"][b.type] = stats["buildings"].get(b.type, 0) + 1
+        return stats
 
 class TurnManager:
     def __init__(self, simulation):

@@ -10,6 +10,7 @@ from .input import InputHandler
 from .camera import CameraController
 from .render import MapRenderer
 from .assets import AssetManager
+from .ui import HUD
 
 
 def load_config():
@@ -42,6 +43,7 @@ class Game(ShowBase):
         self._setup_ui()
 
         self.accept("space", self.next_turn)
+        self.accept("tab", self.hud.toggle_visibility)
         self.accept("t", self.renderer.set_view_mode, ["TERRAIN"])
         
         res_keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
@@ -58,6 +60,9 @@ class Game(ShowBase):
         self.win.requestProperties(props)
 
     def _setup_ui(self):
+        self.hud = HUD(self.aspect2d)
+        self.hud.update(self.turn_mgr.turn_count, self.simulation.get_stats())
+        
         self.end_turn_btn = DirectButton(
             text="End Turn",
             scale=0.1,
@@ -70,6 +75,7 @@ class Game(ShowBase):
     def next_turn(self):
         self.turn_mgr.next_turn()
         self.renderer.update_buildings(self.asset_mgr)
+        self.hud.update(self.turn_mgr.turn_count, self.simulation.get_stats())
 
 if __name__ == "__main__":
     game = Game()
