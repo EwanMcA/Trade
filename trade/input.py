@@ -1,7 +1,10 @@
 class InputHandler:
     def __init__(self, base):
         self.base = base
-        self.key_map = {"up": False, "down": False, "left": False, "right": False, "mouse2": False, "mouse3": False}
+        self.key_map = {
+            "up": False, "down": False, "left": False, "right": False, 
+            "mouse1": False, "mouse2": False, "mouse3": False
+        }
         
         self.base.accept("w", self._update_key_map, ["up", True])
         self.base.accept("w-up", self._update_key_map, ["up", False])
@@ -12,6 +15,8 @@ class InputHandler:
         self.base.accept("d", self._update_key_map, ["right", True])
         self.base.accept("d-up", self._update_key_map, ["right", False])
         
+        self.base.accept("mouse1", self._update_key_map, ["mouse1", True])
+        self.base.accept("mouse1-up", self._update_key_map, ["mouse1", False])
         self.base.accept("mouse2", self._update_key_map, ["mouse2", True])
         self.base.accept("mouse2-up", self._update_key_map, ["mouse2", False])
         self.base.accept("mouse3", self._update_key_map, ["mouse3", True])

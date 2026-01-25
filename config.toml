@@ -72,3 +72,16 @@ GRASSLAND = [0.4, 0.7, 0.3, 1.0]
 FOREST = [0.1, 0.4, 0.1, 1.0]
 TUNDRA = [0.7, 0.7, 0.8, 1.0]
 ROCKY = [0.5, 0.5, 0.5, 1.0]
+
+[production]
+# Rates per turn
+FARM = { GRAIN = 1.0 }
+DOCK = { FISH = 1.0 }
+LUMBER_YARD = { WOOD = 1.0 }
+QUARRY = { STONE = 1.0, IRON = 0.05, COPPER = 0.05, GOLD = 0.01 }
+# MINE produces its primary_resource at this rate
+MINE = { IRON = 1.0, COAL = 1.0, COPPER = 1.0, TIN = 1.0, SILVER = 0.5, GOLD = 0.2 }
+
+[consumption]
+RESIDENTIAL_LOW = { FISH = 0.1 }
+RESIDENTIAL_HIGH = { FISH = 0.5 }

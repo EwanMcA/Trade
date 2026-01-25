@@ -12,6 +12,20 @@ class WorldSimulation:
         base_growth = self.config["simulation"].get("growth_chance", 0.0001)
         self._simulate_growth(base_growth)
         self._spawn_new_settlements()
+        self._process_production_and_consumption()
+
+    def _process_production_and_consumption(self):
+        for tile in self.world_map.tiles.values():
+            for building in tile.buildings:
+                # Production
+                prod_rates = building.get_production_rates(self.config)
+                for res, rate in prod_rates.items():
+                    building.add_resource(res, rate)
+                
+                # Consumption
+                cons_rates = building.get_consumption_rates(self.config)
+                for res, rate in cons_rates.items():
+                    building.add_resource(res, -rate)
 
     def _get_nearest_settlement(self, x, y):
         best_s = None
@@ -150,12 +164,18 @@ class TurnManager:
 
         self.simulation.simulate_turn()
 
-        # count building types
+        # count building types and resources
         btypes = {}
+        total_resources = {res: 0.0 for res in ResourceType}
         for tile in self.simulation.world_map.tiles.values():
             for b in tile.buildings:
                 btypes[b.type] = btypes.get(b.type, 0) + 1
+                for res, amount in b.inventory.items():
+                    total_resources[res] += amount
+
         print("Building counts:", {bt.name: count for bt, count in btypes.items()})
+        res_summary = {res.name: amount for res, amount in total_resources.items() if amount != 0}
+        print("World Resources:", res_summary)
         
         while self.action_queue:
             func, args, kwargs = self.action_queue.pop(0)

@@ -1,8 +1,8 @@
-from panda3d.core import NodePath, Vec4, Vec3
+from panda3d.core import NodePath, Vec4, Vec3, CollisionNode, CollisionBox, Point3
 from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter
 from panda3d.core import Geom, GeomTriangles, GeomNode
 from panda3d.core import DirectionalLight, AmbientLight
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from .constants import TileType, BuildingType
 from .assets import AssetManager
@@ -20,6 +20,11 @@ class MapRenderer:
         self.building_nodes: Dict[Building, NodePath] = {}
         self.vdata: Optional[GeomVertexData] = None
         self.view_mode: str = "TERRAIN" # "TERRAIN" or ResourceType
+        self.selected_building: Optional[Building] = None
+        
+        # Mapping from index to building for picking
+        self._index_to_building: Dict[int, Building] = {}
+        self._next_building_idx = 0
         
         self.type_styles = {
             BuildingType.RESIDENTIAL_HIGH: {"color": (0.7, 0.2, 0.2, 1.0), "scale": (0.35, 0.35, 0.6)},
@@ -175,6 +180,12 @@ class MapRenderer:
                     # Use AssetManager to get a copy instead of loading from disk every time
                     node = asset_mgr.get_instance("models/box", self.root)
                     
+                    # Tag for picking
+                    idx = self._next_building_idx
+                    self._next_building_idx += 1
+                    self._index_to_building[idx] = building
+                    node.setTag("building_idx", str(idx))
+
                     # Position: tile origin + local offset
                     h = self._get_interpolated_elev(tile.x, tile.y, building.local_pos[0], building.local_pos[1]) * height_scale
                     node.setPos(tile.x + building.local_pos[0],

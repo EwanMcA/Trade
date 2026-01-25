@@ -1,16 +1,96 @@
 import random
+import math
 from typing import List, Dict, Tuple, Optional, Any
-from .constants import TileType, ResourceType
+from .constants import TileType, ResourceType, BuildingType
 
 class Building:
-    def __init__(self, b_type: Any, tile: 'Tile', local_pos: Tuple[float, float], settlement: Optional['Settlement'] = None):
+    def __init__(self, b_type: BuildingType, tile: 'Tile', local_pos: Tuple[float, float], settlement: Optional['Settlement'] = None):
         self.type = b_type
         self.tile = tile
         self.local_pos = local_pos # (x, y) relative to tile origin, 0-1
         self.settlement = settlement
+        self.inventory: Dict[ResourceType, int] = {res: 0 for res in ResourceType}
+        self._resource_buffers: Dict[ResourceType, float] = {res: 0.0 for res in ResourceType}
+        self.primary_resource: Optional[ResourceType] = None
+
+        if self.type == BuildingType.MINE:
+            self._select_primary_resource()
+
         if settlement:
             settlement.buildings.append(self)
         self.tile.buildings.append(self)
+
+    def add_resource(self, res: ResourceType, amount: float) -> None:
+        """Adds (or removes) a fractional amount of a resource, updating the integer inventory using floor."""
+        self._resource_buffers[res] += amount
+        # floor() ensures we only count "full barrels/crates"
+        change = math.floor(self._resource_buffers[res])
+        if change != 0:
+            self.inventory[res] += change
+            self._resource_buffers[res] -= change
+
+    def get_production_rates(self, config: Dict[str, Any]) -> Dict[ResourceType, float]:
+        """Calculates effective production rates based on building type and tile potentials."""
+        prod_cfg = config.get("production", {})
+        rates = {}
+        
+        b_name = self.type.name
+        if b_name not in prod_cfg:
+            return {}
+            
+        cfg_rates = prod_cfg[b_name]
+        
+        if self.type == BuildingType.MINE:
+            if self.primary_resource:
+                rate = cfg_rates.get(self.primary_resource.name, 0.0)
+                rates[self.primary_resource] = rate
+        elif self.type == BuildingType.QUARRY:
+            for r_name, rate in cfg_rates.items():
+                res = ResourceType[r_name]
+                if res == ResourceType.STONE:
+                    rates[res] = rate
+                else:
+                    # Secondary resources based on potential
+                    potential = self.tile.potentials.get(res, 0.0)
+                    if potential > 0:
+                        rates[res] = rate * potential
+        else:
+            for r_name, rate in cfg_rates.items():
+                rates[ResourceType[r_name]] = rate
+                
+        return rates
+
+    def get_consumption_rates(self, config: Dict[str, Any]) -> Dict[ResourceType, float]:
+        """Calculates effective consumption rates."""
+        cons_cfg = config.get("consumption", {})
+        rates = {}
+        
+        b_name = self.type.name
+        if b_name not in cons_cfg:
+            return {}
+            
+        cfg_rates = cons_cfg[b_name]
+        for r_name, rate in cfg_rates.items():
+            rates[ResourceType[r_name]] = rate
+            
+        return rates
+
+    def _select_primary_resource(self) -> None:
+        """Selects the single most abundant metal/mineral on the tile as the primary resource."""
+        metals = [
+            ResourceType.IRON, ResourceType.COAL, ResourceType.COPPER,
+            ResourceType.TIN, ResourceType.SILVER, ResourceType.GOLD
+        ]
+        best_res = None
+        best_val = -1.0
+        
+        for res in metals:
+            val = self.tile.potentials.get(res, 0.0)
+            if val > best_val and val > 0:
+                best_val = val
+                best_res = res
+        
+        self.primary_resource = best_res
 
 class Tile:
     def __init__(self, x: int, y: int, elevation: float, moisture: float, thresholds: Dict[str, float]):
