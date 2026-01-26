@@ -23,6 +23,13 @@ class Building:
     def add_resource(self, res: ResourceType, amount: float) -> None:
         """Adds (or removes) a fractional amount of a resource, updating the integer inventory using floor."""
         self._resource_buffers[res] += amount
+
+        # Clamp total amount to zero to prevent negative inventory
+        if self.inventory[res] + self._resource_buffers[res] < 0:
+            self.inventory[res] = 0
+            self._resource_buffers[res] = 0.0
+            return
+
         # floor() ensures we only count "full barrels/crates"
         change = math.floor(self._resource_buffers[res])
         if change != 0:
